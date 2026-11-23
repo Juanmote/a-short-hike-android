@@ -548,6 +548,53 @@ index 2553cbe..e75c03e 100644
  	}
  
  	private static void ConfigureWidth(int width)
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/Player.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/Player.cs
+index 92c85c8..eb0c055 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/Player.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/Player.cs
+@@ -380,6 +380,32 @@ public class Player : PhysicsMovement, ICanFace, IFloater, IPlayerAnimatable
+ 
+ 	public bool isClimbing { get; private set; }
+ 
++	// Port Android: vibración suave y continua mientras se planea (manteniendo A).
++	private bool ashWasGliding;
++
++	private float ashGlideRumbleNext;
++
++	private void ASHGlideRumble()
++	{
++		bool gliding = isGliding && !base.isGrounded && Time.timeScale > 0f && input.hasFocus;
++		if (gliding)
++		{
++			if (!ashWasGliding)
++			{
++				// Al abrir las alas: un toque algo más fuerte.
++				ASHRumble.Pulse(0.12f, 0.5f);
++				ashGlideRumbleNext = Time.time + 0.1f;
++			}
++			else if (Time.time >= ashGlideRumbleNext)
++			{
++				// Zumbido continuo (cada pulso se solapa con el siguiente); más fuerte en una corriente de aire.
++				ASHRumble.Pulse(0.3f, isInUpdraft ? 0.45f : 0f);
++				ashGlideRumbleNext = Time.time + 0.25f;
++			}
++		}
++		ashWasGliding = gliding;
++	}
++
+ 	public bool isGliding
+ 	{
+ 		get
+@@ -894,7 +920,8 @@ public class Player : PhysicsMovement, ICanFace, IFloater, IPlayerAnimatable
+ 			_ = base.isGrounded;
+ 			glideStartCountdown = holdGlideButtonTime * 0.5f;
+ 		}
+-		float b2 = ((!isGliding) ? 0f : Vector3.Cross(GetDesiredRotateDirection(), base.transform.forward).y);
++		ASHGlideRumble();
++		float b2 =((!isGliding) ? 0f : Vector3.Cross(GetDesiredRotateDirection(), base.transform.forward).y);
+ 		horizontalTilt = Mathf.Lerp(horizontalTilt, b2, Time.deltaTime * glideTiltSpeed);
+ 		float a = 0f;
+ 		float magnitude = input.GetMovement().magnitude;
 diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs
 index 3fecd0b..e5ebe82 100644
 --- a/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs
@@ -683,3 +730,21 @@ index 33fe57a..700af84 100644
  			controller.OnBallWhackedByPlayer();
  		}
  	}
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/WhackingActions.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/WhackingActions.cs
+index b0b9b6e..0c1da92 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/WhackingActions.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/WhackingActions.cs
+@@ -37,6 +37,13 @@ public class WhackingActions : MonoBehaviour, IHoldableAction
+ 		{
+ 			whackable.Whack(base.gameObject);
+ 			smackParticles.Play();
++			// Port Android: golpe con el palo que da en algo.
++			ASHRumble.Pulse(0.14f, 0.9f);
++		}
++		else
++		{
++			// Port Android: golpe al aire.
++			ASHRumble.Pulse(0.07f, 0.4f);
+ 		}
+ 	}
+ 

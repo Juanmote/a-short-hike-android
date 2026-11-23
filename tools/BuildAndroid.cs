@@ -86,7 +86,8 @@ public static class BuildAndroid
             PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.juanmote.ashorthike");
             string ver = Environment.GetEnvironmentVariable("APK_VERSION") ?? "1";
             int code; if (!int.TryParse(ver, out code)) code = 1;
-            PlayerSettings.bundleVersion = "1.0." + code;
+            string name = Environment.GetEnvironmentVariable("APK_VERSION_NAME");
+            PlayerSettings.bundleVersion = string.IsNullOrEmpty(name) ? "1.0." + code : name;
             PlayerSettings.Android.bundleVersionCode = code;
 
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);

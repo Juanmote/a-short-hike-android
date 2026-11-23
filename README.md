@@ -7,6 +7,8 @@ con mando físico, controles táctiles, vibración, logros, filtros de imagen y 
 Cómpralo y apoya a su creador: [itch.io](https://adamgryu.itch.io/a-short-hike) ·
 [Steam](https://store.steampowered.com/app/1055540/A_Short_Hike/)
 
+**Versión actual: 1.0**
+
 Port: **Juanmote**. Juego original: **adamgryu** (Adam Robinson-Yu). Este proyecto no está afiliado al autor del juego.
 
 ## Versiones del juego que valen
@@ -42,6 +44,7 @@ Para saber la versión: en el menú principal del juego aparece abajo a la derec
 
 ### Vibración (Opciones › Controles)
 - Vibra la consola y el mando si tiene motor: pesca (picada, tirones, captura), aleteo, saltos,
+  planear (vibración suave mientras mantienes A, más fuerte en las corrientes de aire), golpes con el palo,
   chapuzones, pala, cofres, objetos recogidos, voleibol y logros.
 
 ### Imagen (Opciones › Gráficos)

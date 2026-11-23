@@ -383,7 +383,7 @@ index 1f1aa90..991f5a6 100644
  	}
  }
 diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs
-index 5b2a275..68e5783 100644
+index 5b2a275..d7f2a66 100644
 --- a/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs
 +++ b/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs
 @@ -299,8 +299,43 @@ public class OptionsMenu : MonoBehaviour
@@ -471,7 +471,74 @@ index 5b2a275..68e5783 100644
  			{
  				list.Add(new MenuItem(GetTargetFPSText(), (BasicMenuItem item) =>
  				{
-@@ -760,11 +821,40 @@ public class OptionsMenu : MonoBehaviour
+@@ -579,9 +640,66 @@ public class OptionsMenu : MonoBehaviour
+ 			UI.SetGenericText(item.gameObject, GetAutoSaveText());
+ 			PositionMenu(menu.transform);
+ 		}));
++		if (ASHSaves.Available)
++		{
++			// Port Android: exportar / importar la partida de la ranura actual
++			list.Add(new MenuItem(ASHText.T("exportar partida", "export save"), () =>
++			{
++				ASHSaves.Export(GameSettings.saveSlot, ShowASHMessage);
++			}));
++			list.Add(new MenuItem(ASHText.T("importar partida", "import save"), () =>
++			{
++				if (!ASHSaves.OnTitleScreen)
++				{
++					ShowASHMessage(ASHText.T("vuelve al menú principal\npara importar una partida", "return to the main menu\nto import a save"));
++				}
++				else if (ASHSaves.SlotHasSave(GameSettings.saveSlot))
++				{
++					LinearMenu confirm = null;
++					confirm = ui.CreateSimpleMenu(new string[2]
++					{
++						I18n.STRINGS.continueText,
++						I18n.STRINGS.dontContinue
++					}, new Action[2]
++					{
++						() =>
++						{
++							confirm.Kill();
++							ASHSaves.Import(GameSettings.saveSlot, ShowASHMessage);
++						},
++						() =>
++						{
++							confirm.Kill();
++						}
++					});
++					GameObject warning = ui.CreateTextMenuItem(ASHText.T("<sprite name=\"Warning\" tint=1> se sustituirá la partida\nde esta ranura", "<sprite name=\"Warning\" tint=1> this will replace the save\nin this slot"));
++					warning.transform.SetParent(confirm.transform, worldPositionStays: false);
++					warning.transform.SetAsFirstSibling();
++					LayoutRebuilder.ForceRebuildLayoutImmediate(confirm.transform as RectTransform);
++					(confirm.transform as RectTransform).CenterWithinParent();
++				}
++				else
++				{
++					ASHSaves.Import(GameSettings.saveSlot, ShowASHMessage);
++				}
++			}));
++		}
+ 		menu = BuildSimpleMenu(list);
+ 	}
+ 
++	private void ShowASHMessage(string text)
++	{
++		UI target = ui;
++		if (target == null && Singleton<GameServiceLocator>.instance != null)
++		{
++			target = Singleton<GameServiceLocator>.instance.ui;
++		}
++		if (target != null && dialogBoxPrefab != null)
++		{
++			UI.SetGenericText(target.AddUI(dialogBoxPrefab.Clone()), text);
++		}
++	}
++
+ 	private void ShowSaveSlotsMenu(LinearMenu parentMenu, BasicMenuItem menuItem)
+ 	{
+ 		LinearMenu submenu = null;
+@@ -760,11 +878,40 @@ public class OptionsMenu : MonoBehaviour
  
  	private void ShowControlsMenu()
  	{
@@ -512,7 +579,7 @@ index 5b2a275..68e5783 100644
  		if (!GameSettings.restrictKeyboardSettings)
  		{
  			list.Add(new MenuItem(I18n.STRINGS.keyboard, () =>
-@@ -799,7 +889,7 @@ public class OptionsMenu : MonoBehaviour
+@@ -799,7 +946,7 @@ public class OptionsMenu : MonoBehaviour
  				controllerRemapperPrefab.Clone();
  			}));
  		}

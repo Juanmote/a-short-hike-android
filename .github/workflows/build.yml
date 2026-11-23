@@ -14,6 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  VERSION_PUBLICA: "1.1"
   UNITY_IMAGE: unityci/editor:ubuntu-2021.3.45f1-android-3
   ASSETRIPPER_URL: https://github.com/AssetRipper/AssetRipper/releases/download/2.0.0/AssetRipper_linux_x64.tar.xz
   # Huellas de AShortHike_Data/Managed/Assembly-CSharp.dll de las versiones con las que se hizo el port (1.10.2)
@@ -161,7 +162,7 @@ jobs:
         run: |
           docker pull -q "$UNITY_IMAGE"
           docker run --rm \
-            -e UNITY_EMAIL -e UNITY_PASSWORD -e ANDROID_KEYSTORE_PASS -e ANDROID_KEYSTORE_PATH=/work/build/release.keystore -e APK_VERSION=${{ github.run_number }} \
+            -e UNITY_EMAIL -e UNITY_PASSWORD -e ANDROID_KEYSTORE_PASS -e ANDROID_KEYSTORE_PATH=/work/build/release.keystore -e APK_VERSION=${{ github.run_number }} -e APK_VERSION_NAME="$VERSION_PUBLICA.${{ github.run_number }}" \
             -v "$GITHUB_WORKSPACE":/work -w /work \
             "$UNITY_IMAGE" bash /work/tools/unity-run.sh
           rm -f build/release.keystore
@@ -195,10 +196,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK="build/AShortHike-v1.0.${{ github.run_number }}.apk"
+          APK="build/AShortHike-v$VERSION_PUBLICA.${{ github.run_number }}.apk"
           mv build/AShortHike.apk "$APK"
-          gh release create "v1.0.${{ github.run_number }}" "$APK" \
-            --title "A Short Hike Android 1.0.${{ github.run_number }}" \
+          gh release create "v$VERSION_PUBLICA.${{ github.run_number }}" "$APK" \
+            --title "A Short Hike Android $VERSION_PUBLICA.${{ github.run_number }}" \
             --notes "APK arm64 montada con mi copia del juego."
 
       - name: Resultado

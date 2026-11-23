@@ -7,7 +7,9 @@ con mando físico, controles táctiles, vibración, logros, filtros de imagen y 
 Cómpralo y apoya a su creador: [itch.io](https://adamgryu.itch.io/a-short-hike) ·
 [Steam](https://store.steampowered.com/app/1055540/A_Short_Hike/)
 
-**Versión actual: 1.0**
+**Versión actual: 1.1**
+
+Novedades de la 1.1: exportar e importar partidas (Opciones › Datos de guardado).
 
 Port: **Juanmote**. Juego original: **adamgryu** (Adam Robinson-Yu). Este proyecto no está afiliado al autor del juego.
 
@@ -28,6 +30,9 @@ Para saber la versión: en el menú principal del juego aparece abajo a la derec
 - Se ajusta a cualquier relación de aspecto, también 4:3, 8:7 y 1:1 (los menús se ven enteros).
 - 30, 60 o 120 fps (Opciones › Gráficos). Con 120 se pide a la pantalla que funcione a 120 Hz.
 - Las partidas y opciones se guardan en la consola (sin Steam).
+- **Exportar / importar partidas** (Opciones › Datos de guardado): copia la partida de la ranura elegida
+  a cualquier carpeta (o a la nube) con el selector de archivos de Android, y recupérala en esta u otra consola.
+  La importación se hace desde el menú principal; la partida que hubiera se guarda como copia `.bak`.
 - Gráficos corregidos para Android (shaders reconstruidos para OpenGL ES 3).
 - Música y fuentes japonesas, chinas, coreanas y cirílicas funcionando sin Addressables.
 - Icono propio (normal, redondo y adaptativo).
@@ -91,7 +96,7 @@ seleccionar carpeta).
    - **Recomendado:** en tu copia, **Releases › Create a new release**, etiqueta `juego`, y adjunta el archivo. Admite archivos grandes.
    - Si pesa menos de 25 MB por archivo (por ejemplo, un 7z en volúmenes): súbelo a la carpeta `game/`.
 5. **Compila:** pestaña **Actions › Compilar APK › Run workflow**. Tarda entre 30 y 60 minutos.
-6. La APK aparece en **Releases** (`A Short Hike Android 1.0.x`). Descárgala desde la consola e instálala.
+6. La APK aparece en **Releases** (`A Short Hike Android 1.1.x`). Descárgala desde la consola e instálala.
 
 La primera compilación crea una clave de firma y la guarda en tu copia (`tools/firma/mi.keystore`),
 así las siguientes APK se instalan encima sin desinstalar. Si prefieres tu propia clave, añade los secretos

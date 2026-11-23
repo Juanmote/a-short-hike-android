@@ -1,0 +1,17 @@
+<!-- Port Android: evita que IL2CPP elimine código que el juego usa por reflexión
+     (Yarn/diálogos, Newtonsoft.Json, CsvHelper, perfiles de InControl...). -->
+<linker>
+  <assembly fullname="Assembly-CSharp" preserve="all"/>
+  <assembly fullname="Assembly-CSharp-firstpass" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="Antlr4.Runtime.Standard" preserve="all"/>
+  <assembly fullname="Cinemachine" preserve="all"/>
+  <assembly fullname="CsvHelper" preserve="all"/>
+  <assembly fullname="InControl" preserve="all"/>
+  <assembly fullname="Ionic.Zip.Unity" preserve="all"/>
+  <assembly fullname="Newtonsoft.Json" preserve="all"/>
+  <assembly fullname="PathCreator" preserve="all"/>
+  <assembly fullname="Unity.TextMeshPro" preserve="all"/>
+  <assembly fullname="Unity.ResourceManager" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="Unity.Addressables" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="System.Core" preserve="all"/>
+</linker>

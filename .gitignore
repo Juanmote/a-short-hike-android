@@ -1,0 +1,6 @@
+UnityProject/
+build/
+logs/
+*.csproj
+*.sln
+__pycache__/

@@ -1,0 +1,208 @@
+name: Compilar APK
+
+# Monta la APK de Android a partir de TU copia del juego (itch.io Linux o Steam Windows, versión 1.10.2).
+# Solo funciona en un repositorio PRIVADO (ver README): los archivos del juego no deben publicarse.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+env:
+  UNITY_IMAGE: unityci/editor:ubuntu-2021.3.45f1-android-3
+  ASSETRIPPER_URL: https://github.com/AssetRipper/AssetRipper/releases/download/2.0.0/AssetRipper_linux_x64.tar.xz
+  # Huellas de AShortHike_Data/Managed/Assembly-CSharp.dll de las versiones con las que se hizo el port (1.10.2)
+  DLL_ITCH_LINUX: ac010a25238df1f01865b9ee46d8c8909d45954bc7a2a0c4fbb80049a2d29b87
+  DLL_STEAM_WINDOWS: f1ed68196da0af86ebb89feb42dcb5338e74e24a765de3101e8fdf1b39643890
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Comprobar que el repositorio es privado
+        if: ${{ !github.event.repository.private }}
+        run: |
+          echo "::error::Este repositorio es público. Haz una copia PRIVADA (ver README) antes de subir los archivos del juego."
+          exit 1
+
+      - name: Comprobar los secretos de Unity
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          if [ -z "$UNITY_EMAIL" ] || [ -z "$UNITY_PASSWORD" ]; then
+            echo "::error::Faltan los secretos UNITY_EMAIL y UNITY_PASSWORD (cuenta gratuita de Unity). Ver README."
+            exit 1
+          fi
+
+      - name: Liberar espacio en disco
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force > /dev/null
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - name: Conseguir los archivos del juego
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full > /dev/null
+          mkdir -p "$RUNNER_TEMP/subida" "$RUNNER_TEMP/juego"
+          # 1) Archivos subidos a la carpeta game/ del repositorio
+          if [ -d game ]; then cp -r game/. "$RUNNER_TEMP/subida/"; rm -f "$RUNNER_TEMP/subida/LEEME.md"; fi
+          # 2) O archivos adjuntos a una release con la etiqueta "juego"
+          if [ -z "$(ls -A "$RUNNER_TEMP/subida")" ]; then
+            gh release download juego -R "$GITHUB_REPOSITORY" -D "$RUNNER_TEMP/subida" || true
+          fi
+          ls -la "$RUNNER_TEMP/subida"
+          if [ -z "$(ls -A "$RUNNER_TEMP/subida")" ]; then
+            echo "::error::No encuentro los archivos del juego. Súbelos a la carpeta game/ o a una release con la etiqueta 'juego' (ver README)."
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/subida"
+          # Descomprime lo que haga falta (zip, 7z, tar, en volúmenes o no); lo que no esté comprimido se copia tal cual
+          for f in *; do
+            case "$f" in
+              *.7z.001|*.zip.001|*.zip|*.7z|*.rar) 7z x -y -o"$RUNNER_TEMP/juego" "$f" > /dev/null ;;
+              *.tar.xz.001) cat "${f%.001}".[0-9][0-9][0-9] | tar -xJ -C "$RUNNER_TEMP/juego" ;;
+              *.tar.gz.001) cat "${f%.001}".[0-9][0-9][0-9] | tar -xz -C "$RUNNER_TEMP/juego" ;;
+              *.7z.[0-9][0-9][0-9]|*.zip.[0-9][0-9][0-9]|*.tar.xz.[0-9][0-9][0-9]|*.tar.gz.[0-9][0-9][0-9]) ;;  # resto de volúmenes: se leen con el .001
+              *.tar.gz|*.tgz|*.tar.xz|*.tar) tar -xf "$f" -C "$RUNNER_TEMP/juego" ;;
+              *) cp -r "$f" "$RUNNER_TEMP/juego/" ;;
+            esac
+          done
+          DATA=$(find "$RUNNER_TEMP/juego" -type d -name 'AShortHike_Data' | head -1)
+          if [ -z "$DATA" ]; then
+            echo "::error::No encuentro la carpeta AShortHike_Data del juego dentro de lo que has subido."
+            exit 1
+          fi
+          echo "Carpeta del juego: $DATA"
+          echo "GAME_DIR=$(dirname "$DATA")" >> "$GITHUB_ENV"
+          SUM=$(sha256sum "$DATA/Managed/Assembly-CSharp.dll" | cut -d' ' -f1 || true)
+          case "$SUM" in
+            "$DLL_ITCH_LINUX") echo "Copia reconocida: itch.io Linux 1.10.2" ;;
+            "$DLL_STEAM_WINDOWS") echo "Copia reconocida: Steam Windows 1.10.2" ;;
+            *) echo "::warning::Tu copia del juego no es ninguna de las versiones con las que se hizo el port (itch.io Linux o Steam Windows 1.10.2). Se intenta igualmente." ;;
+          esac
+
+      - name: Extraer el proyecto Unity con AssetRipper
+        run: |
+          mkdir -p logs "$RUNNER_TEMP/ar"
+          curl -sSL -o ar.tar.xz "$ASSETRIPPER_URL"
+          tar -xf ar.tar.xz -C "$RUNNER_TEMP/ar" && rm ar.tar.xz
+          chmod +x "$RUNNER_TEMP/ar/AssetRipper.GUI.Free"
+          cd "$RUNNER_TEMP/ar"
+          ./AssetRipper.GUI.Free --port 8888 --headless --log --log-path "$GITHUB_WORKSPACE/logs/assetripper.log" > "$GITHUB_WORKSPACE/logs/assetripper-stdout.log" 2>&1 &
+          for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8888/ && break; sleep 2; done
+          curl -sS -X POST --data-urlencode "Path=$GAME_DIR" http://127.0.0.1:8888/LoadFolder -o /dev/null -w 'carga %{http_code}\n'
+          curl -sS -X POST --data-urlencode "Path=$RUNNER_TEMP/out" http://127.0.0.1:8888/Export/UnityProject -o /dev/null -w 'exportación %{http_code}\n'
+          rm -rf "$GITHUB_WORKSPACE/UnityProject" && mkdir -p "$GITHUB_WORKSPACE/UnityProject"
+          cp -r "$RUNNER_TEMP/out/ExportedProject/." "$GITHUB_WORKSPACE/UnityProject/"
+          rm -rf "$GITHUB_WORKSPACE/UnityProject/Library" "$GITHUB_WORKSPACE/UnityProject/Temp" "$GITHUB_WORKSPACE/UnityProject/Logs"
+          rm -rf "$RUNNER_TEMP/out" "$RUNNER_TEMP/juego" "$RUNNER_TEMP/subida"
+
+      - name: Aplicar el port de Android
+        run: |
+          pip install -q UnityPy lz4
+          bash tools/aplicar-port.sh
+
+      - name: Preparar el script de compilación
+        run: |
+          mkdir -p UnityProject/Assets/Editor build
+          cp tools/BuildAndroid.cs UnityProject/Assets/Editor/BuildAndroid.cs
+
+      - name: Caché de Library
+        uses: actions/cache@v4
+        with:
+          path: UnityProject/Library
+          key: Library-2021.3-${{ hashFiles('patches/**', 'port/**', 'tools/**') }}
+          restore-keys: Library-2021.3-
+
+      # Firma: siempre la misma clave para poder actualizar sin desinstalar.
+      # Si no hay secretos, la primera compilación crea una clave (tools/firma/mi.keystore) y la guarda en tu copia privada.
+      - name: Firma
+        id: firma
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > build/release.keystore
+            echo "pass=$KS_PASS" >> "$GITHUB_OUTPUT"
+          else
+            if [ ! -f tools/firma/mi.keystore ]; then
+              mkdir -p tools/firma
+              keytool -genkeypair -storetype JKS -keystore tools/firma/mi.keystore -alias ash -keyalg RSA -keysize 2048 \
+                -validity 20000 -storepass ashport -keypass ashport -dname "CN=A Short Hike Android" > /dev/null 2>&1
+              git config user.name "github-actions[bot]"
+              git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+              git add tools/firma/mi.keystore
+              git commit -qm "Clave de firma para las actualizaciones"
+              git push -q || echo "::warning::No se pudo guardar la clave de firma en el repositorio."
+            fi
+            cp tools/firma/mi.keystore build/release.keystore
+            echo "pass=ashport" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compilar con Unity
+        id: unity
+        continue-on-error: true
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          ANDROID_KEYSTORE_PASS: ${{ steps.firma.outputs.pass }}
+        run: |
+          docker pull -q "$UNITY_IMAGE"
+          docker run --rm \
+            -e UNITY_EMAIL -e UNITY_PASSWORD -e ANDROID_KEYSTORE_PASS -e ANDROID_KEYSTORE_PATH=/work/build/release.keystore -e APK_VERSION=${{ github.run_number }} \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            "$UNITY_IMAGE" bash /work/tools/unity-run.sh
+          rm -f build/release.keystore
+          test -f build/AShortHike.apk
+
+      - name: Resumen de errores
+        if: always()
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+        run: |
+          sudo chown -R "$USER" logs build UnityProject 2>/dev/null || true
+          { echo "compilación ${{ github.run_number }} resultado: ${{ steps.unity.outcome }}";
+            grep -E "error CS|Compilation failed|\[ASH\]|BuildFailedException|Error building|Exception" logs/unity-build.log | sort | uniq | head -400; } > logs/errores.txt 2>/dev/null || true
+          grep -v -i password logs/unity-activate.log 2>/dev/null | sed "s/${UNITY_EMAIL:-@@@}/<email>/g" | tail -120 > logs/licencia.txt || true
+          rm -f logs/unity-activate.log
+          tail -c 3000000 logs/unity-build.log > logs/unity-build-tail.log 2>/dev/null || true
+          rm -f logs/unity-build.log
+          cat logs/errores.txt || true
+
+      - name: Guardar los registros
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros
+          path: logs/
+          retention-days: 7
+
+      - name: Publicar la APK en Releases
+        if: steps.unity.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="build/AShortHike-v1.0.${{ github.run_number }}.apk"
+          mv build/AShortHike.apk "$APK"
+          gh release create "v1.0.${{ github.run_number }}" "$APK" \
+            --title "A Short Hike Android 1.0.${{ github.run_number }}" \
+            --notes "APK arm64 montada con mi copia del juego."
+
+      - name: Resultado
+        if: steps.unity.outcome != 'success'
+        run: |
+          echo "::error::La compilación ha fallado. Descarga los 'registros' de esta ejecución y mira errores.txt y licencia.txt."
+          exit 1

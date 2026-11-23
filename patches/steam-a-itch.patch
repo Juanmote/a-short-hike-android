@@ -1,0 +1,393 @@
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/CrossPlatform.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/CrossPlatform.cs
+index 3b2cf3b..438c12c 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/CrossPlatform.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/CrossPlatform.cs
+@@ -98,7 +98,7 @@ public static class CrossPlatform
+ 
+ 	public static IAchievementBackend CreateAchievementBackend(AchievementManager manager)
+ 	{
+-		return new SteamAchievements();
++		return new NullAchievements();
+ 	}
+ 
+ 	public static void OnEngagementScreenActivated(TitleScreen title, bool forceUserSelect, Action<bool> onFinish)
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/FocusableUserInputManager.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/FocusableUserInputManager.cs
+index e90928b..1022113 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/FocusableUserInputManager.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/FocusableUserInputManager.cs
+@@ -79,7 +79,7 @@ namespace QuickUnityTools.Input
+ 			{
+ 				text = text + "\n" + registeredUserInput.Key?.ToString() + " - " + registeredUserInput.Value.name;
+ 			}
+-			return text;
++			return text.Trim();
+ 		}
+ 	}
+ }
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs
+index 86c0b30..985e001 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs
+@@ -1,3 +1,4 @@
++using System.Collections.Generic;
+ using System.Linq;
+ using InControl;
+ 
+@@ -137,14 +138,20 @@ namespace QuickUnityTools.Input
+ 			lookRight.AddBinding(new MouseBindingSource(Mouse.PositiveX));
+ 		}
+ 
+-		public string GetButtonName(PlayerAction action)
++		public BindingSourceType GetLastInputType()
+ 		{
+ 			BindingSourceType bindingSourceType = LastInputType;
+ 			if (bindingSourceType == BindingSourceType.None && InputManager.IsSetup)
+ 			{
+ 				bindingSourceType = ((InputManager.Devices.Count > 0) ? BindingSourceType.DeviceBindingSource : BindingSourceType.KeyBindingSource);
+ 			}
+-			if (!bindingSourceType.IsMouseOrKeyboard())
++			return bindingSourceType;
++		}
++
++		public string GetButtonName(PlayerAction action)
++		{
++			BindingSourceType lastInputType = GetLastInputType();
++			if (!lastInputType.IsMouseOrKeyboard())
+ 			{
+ 				string customHandle = GetCustomHandle(action);
+ 				if (customHandle != null)
+@@ -152,18 +159,34 @@ namespace QuickUnityTools.Input
+ 					return customHandle;
+ 				}
+ 			}
++			BindingSource bindingSource = null;
+ 			foreach (BindingSource binding in action.Bindings)
+ 			{
+-				if (binding.BindingSourceType.IsMouseOrKeyboard() == bindingSourceType.IsMouseOrKeyboard())
++				if (binding.BindingSourceType.IsMouseOrKeyboard() == lastInputType.IsMouseOrKeyboard())
+ 				{
+-					return binding.Name;
++					bindingSource = binding;
++					break;
+ 				}
+ 			}
+-			if (action.Bindings.Count > 0)
++			if (bindingSource == null && action.Bindings.Count > 0)
++			{
++				bindingSource = action.Bindings[0];
++			}
++			if (bindingSource is DeviceBindingSource && InputManager.ActiveDevice == InputDevice.Null)
++			{
++				return DesperatelyTryToFindAButtonName(bindingSource as DeviceBindingSource);
++			}
++			return bindingSource.Name;
++		}
++
++		private string DesperatelyTryToFindAButtonName(DeviceBindingSource bindingSource)
++		{
++			IEnumerable<InputDevice> source = InputManager.Devices.Where((InputDevice d) => !d.Name.Contains("Unknown"));
++			if (!source.Any())
+ 			{
+-				return action.Bindings[0].Name;
++				return "?";
+ 			}
+-			return "?";
++			return source.First().GetControl(bindingSource.Control).Handle;
+ 		}
+ 
+ 		public string GetCustomHandle(PlayerAction action)
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSetSettings.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSetSettings.cs
+index 4217932..a48aef8 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSetSettings.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSetSettings.cs
+@@ -1,4 +1,5 @@
+ using System;
++using UnityEngine;
+ 
+ namespace QuickUnityTools.Input
+ {
+@@ -21,6 +22,10 @@ namespace QuickUnityTools.Input
+ 
+ 		public static GameActionSetSettings Load()
+ 		{
++			if (Application.isConsolePlatform)
++			{
++				Debug.LogWarning("This isn't supposed to be called on consoles.");
++			}
+ 			return CrossPlatform.LoadPrefsFile<GameActionSetSettings>(SAVE_FILE);
+ 		}
+ 	}
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameUserInput.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameUserInput.cs
+index afd2a52..142fc4b 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameUserInput.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameUserInput.cs
+@@ -34,17 +34,27 @@ namespace QuickUnityTools.Input
+ 		}
+ 
+ 		protected override ButtonState GetRawButton(Button button)
++		{
++			PlayerAction playerActionFromButton = GetPlayerActionFromButton(button);
++			if (playerActionFromButton == null)
++			{
++				return default;
++			}
++			return ButtonFromInputControl(button, playerActionFromButton);
++		}
++
++		public PlayerAction GetPlayerActionFromButton(Button button)
+ 		{
+ 			return button switch
+ 			{
+-				Button.Button1 => ButtonFromInputControl(button, sharedActionSet.button1), 
+-				Button.Button2 => ButtonFromInputControl(button, sharedActionSet.button2), 
+-				Button.Button3 => ButtonFromInputControl(button, sharedActionSet.button3), 
+-				Button.Button4 => ButtonFromInputControl(button, sharedActionSet.button4), 
+-				Button.LeftBumper => ButtonFromInputControl(button, sharedActionSet.leftBumper), 
+-				Button.RightBumper => ButtonFromInputControl(button, sharedActionSet.rightBumper), 
+-				Button.MenuButton => ButtonFromInputControl(button, sharedActionSet.menuButton), 
+-				_ => default, 
++				Button.Button1 => sharedActionSet.button1, 
++				Button.Button2 => sharedActionSet.button2, 
++				Button.Button3 => sharedActionSet.button3, 
++				Button.Button4 => sharedActionSet.button4, 
++				Button.LeftBumper => sharedActionSet.leftBumper, 
++				Button.RightBumper => sharedActionSet.rightBumper, 
++				Button.MenuButton => sharedActionSet.menuButton, 
++				_ => null, 
+ 			};
+ 		}
+ 
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/SteamManager.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/SteamManager.cs
+index 993da4e..08a7f4c 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/SteamManager.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/SteamManager.cs
+@@ -1,114 +1,7 @@
+-using System;
+-using System.Text;
+-using Steamworks;
+ using UnityEngine;
+ 
+ [DisallowMultipleComponent]
+ public class SteamManager : MonoBehaviour
+ {
+-	private static SteamManager s_instance;
+-
+-	private static bool s_EverInitialized;
+-
+-	private bool m_bInitialized;
+-
+-	private SteamAPIWarningMessageHook_t m_SteamAPIWarningMessageHook;
+-
+-	private static SteamManager Instance
+-	{
+-		get
+-		{
+-			if (s_instance == null)
+-			{
+-				return new GameObject("SteamManager").AddComponent<SteamManager>();
+-			}
+-			return s_instance;
+-		}
+-	}
+-
+-	public static bool Initialized => Instance.m_bInitialized;
+-
+-	private static void SteamAPIDebugTextHook(int nSeverity, StringBuilder pchDebugText)
+-	{
+-		Debug.LogWarning(pchDebugText);
+-	}
+-
+-	private void Awake()
+-	{
+-		if (s_instance != null)
+-		{
+-			UnityEngine.Object.Destroy(base.gameObject);
+-			return;
+-		}
+-		s_instance = this;
+-		if (s_EverInitialized)
+-		{
+-			throw new Exception("Tried to Initialize the SteamAPI twice in one session!");
+-		}
+-		UnityEngine.Object.DontDestroyOnLoad(base.gameObject);
+-		if (!Packsize.Test())
+-		{
+-			Debug.LogError("[Steamworks.NET] Packsize Test returned false, the wrong version of Steamworks.NET is being run in this platform.", this);
+-		}
+-		if (!DllCheck.Test())
+-		{
+-			Debug.LogError("[Steamworks.NET] DllCheck Test returned false, One or more of the Steamworks binaries seems to be the wrong version.", this);
+-		}
+-		try
+-		{
+-			if (SteamAPI.RestartAppIfNecessary((AppId_t)1055540u))
+-			{
+-				Application.Quit();
+-				return;
+-			}
+-		}
+-		catch (DllNotFoundException ex)
+-		{
+-			Debug.LogError("[Steamworks.NET] Could not load [lib]steam_api.dll/so/dylib. It's likely not in the correct location. Refer to the README for more details.\n" + ex, this);
+-			Application.Quit();
+-			return;
+-		}
+-		m_bInitialized = SteamAPI.Init();
+-		if (!m_bInitialized)
+-		{
+-			Debug.LogError("[Steamworks.NET] SteamAPI_Init() failed. Refer to Valve's documentation or the comment above this line for more information.", this);
+-		}
+-		else
+-		{
+-			s_EverInitialized = true;
+-		}
+-	}
+-
+-	private void OnEnable()
+-	{
+-		if (s_instance == null)
+-		{
+-			s_instance = this;
+-		}
+-		if (m_bInitialized && m_SteamAPIWarningMessageHook == null)
+-		{
+-			m_SteamAPIWarningMessageHook = SteamAPIDebugTextHook;
+-			SteamClient.SetWarningMessageHook(m_SteamAPIWarningMessageHook);
+-		}
+-	}
+-
+-	private void OnDestroy()
+-	{
+-		if (!(s_instance != this))
+-		{
+-			s_instance = null;
+-			if (m_bInitialized)
+-			{
+-				SteamAPI.Shutdown();
+-			}
+-		}
+-	}
+-
+-	private void Update()
+-	{
+-		if (m_bInitialized)
+-		{
+-			SteamAPI.RunCallbacks();
+-		}
+-	}
++	public static bool Initialized => false;
+ }
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/TextReplacer.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/TextReplacer.cs
+index f3e8363..5379fbf 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/TextReplacer.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/TextReplacer.cs
+@@ -1,9 +1,11 @@
+ using System;
++using System.Linq;
+ using System.Text.RegularExpressions;
++using InControl;
+ using QuickUnityTools.Input;
+ using UnityEngine;
+ 
+-public class TextReplacer : MonoBehaviour
++public class TextReplacer
+ {
+ 	public const int CHARACTERS_IN_LINE = 25;
+ 
+@@ -11,8 +13,8 @@ public class TextReplacer : MonoBehaviour
+ 	{
+ 		if (capture.StartsWith("Item_"))
+ 		{
+-			string text = capture.Remove(0, 5);
+-			return Singleton<GlobalData>.instance.gameData.GetCollected(CollectableItem.Load(text)).ToString();
++			string name = capture.Remove(0, 5);
++			return Singleton<GlobalData>.instance.gameData.GetCollected(CollectableItem.Load(name)).ToString();
+ 		}
+ 		foreach (InputMapperExtensions.Button value in Enum.GetValues(typeof(InputMapperExtensions.Button)))
+ 		{
+@@ -53,6 +55,34 @@ public class TextReplacer : MonoBehaviour
+ 		return capture;
+ 	}
+ 
++	private static void PrintInputButtonDebugInformation(InputMapperExtensions.Button button)
++	{
++		FocusableUserInputManager instance = Singleton<FocusableUserInputManager>.instance;
++		GameUserInput obj = Singleton<FocusableUserInputManager>.instance.inputWithFocus as GameUserInput;
++		ButtonState actionButton = obj.GetActionButton(button);
++		PlayerAction playerActionFromButton = obj.GetPlayerActionFromButton(actionButton.button);
++		string text = "<b>-- FOCUSABLE INPUT STACK --</b>\n";
++		text = text + instance.GetInputStack() + "\n";
++		text += "<b>-- ABSTRACTION LAYERS TRACE --</b>\n";
++		text += $"InputMapperExtensions.Button.<color=red>{button}</color> maps to ButtonState.Button.<color=red>{actionButton.button}</color> with name <color=red>\"{actionButton.name}.\"</color>\n";
++		text += $"ButtonState.Button.<color=red>{actionButton.button}</color> maps to GameActionSet action with the name <color=red>\"{playerActionFromButton.Name}\"</color>\n";
++		string text2 = string.Join(",", playerActionFromButton.Bindings.Select((BindingSource b) => b.Name));
++		text = text + "Action <color=red>\"" + playerActionFromButton.Name + "\"</color> maps to bindings: <color=red>" + text2 + "</color>\n";
++		text += "<b>-- INCONTROL DEEP DIVE --</b>\n";
++		text += $"IsSetup: <color=red>{InputManager.IsSetup}</color>\n";
++		string text3 = string.Join(",", InputManager.Devices.Select((InputDevice d) => d.Name + " (" + d.SortOrder + ")"));
++		text3 = (string.IsNullOrEmpty(text3) ? "EMPTY" : text3);
++		text = text + "InControl Devices: <color=red>" + text3 + "</color>\n";
++		string customHandle = GameUserInput.sharedActionSet.GetCustomHandle(playerActionFromButton);
++		customHandle = (string.IsNullOrEmpty(customHandle) ? "NULL" : customHandle);
++		text += $"Last Input Type: <color=red>{GameUserInput.sharedActionSet.GetLastInputType()}</color>\n";
++		text = text + "Custom Handle for " + playerActionFromButton.Name + ": <color=red>" + customHandle + "</color>\n";
++		text = text + "PlayerAction \"" + playerActionFromButton.Name + "\" has a device binding which is currently connected to device: <color=red>" + "?" + "</color>\n";
++		text = text + "GameActionSet.GetButtonName() for " + playerActionFromButton.Name + ": <color=red>" + GameUserInput.sharedActionSet.GetButtonName(playerActionFromButton) + "</color>\n";
++		playerActionFromButton.GetGamepadBinding();
++		Debug.Log(text);
++	}
++
+ 	public static string ReplaceVariables(string text, bool autoLineBreak = true)
+ 	{
+ 		text = text.Replace("\\n", "\n");
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenControls.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenControls.cs
+index 83893ad..64d32fd 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenControls.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenControls.cs
+@@ -10,7 +10,7 @@ public class TouchScreenControls : MonoBehaviour
+ 
+ 	public List<InputControlType> buttonMappings;
+ 
+-	private void Start()
++	private void Awake()
+ 	{
+ 		InputManager.AttachDevice(new TouchScreenInputDevice(this));
+ 	}
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenInputDevice.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenInputDevice.cs
+index 45a483e..b3b6561 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenInputDevice.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenInputDevice.cs
+@@ -5,13 +5,19 @@ public class TouchScreenInputDevice : InputDevice
+ 	private TouchScreenControls controls;
+ 
+ 	public TouchScreenInputDevice(TouchScreenControls controls)
+-		: base("Touch Screen")
++		: base("Adam's Touch Screen Device")
+ 	{
+ 		this.controls = controls;
+ 		base.Meta = "Touch Screen Device";
+ 		base.SortOrder = int.MaxValue;
+-		AddControl(InputControlType.LeftStickX, "LeftStickX");
+-		AddControl(InputControlType.LeftStickY, "LeftStickY");
++		AddControl(InputControlType.LeftStickLeft, "Left Stick Left");
++		AddControl(InputControlType.LeftStickRight, "Left Stick Right");
++		AddControl(InputControlType.LeftStickUp, "Left Stick Up");
++		AddControl(InputControlType.LeftStickDown, "Left Stick Down");
++		AddControl(InputControlType.RightStickLeft, "Right Stick Left");
++		AddControl(InputControlType.RightStickRight, "Right Stick Right");
++		AddControl(InputControlType.RightStickUp, "Right Stick Up");
++		AddControl(InputControlType.RightStickDown, "Right Stick Down");
+ 		for (int i = 0; i < controls.buttonMappings.Count; i++)
+ 		{
+ 			AddControl(controls.buttonMappings[i], controls.buttons[i].buttonName);
+@@ -20,5 +26,10 @@ public class TouchScreenInputDevice : InputDevice
+ 
+ 	public override void Update(ulong updateTick, float deltaTime)
+ 	{
++		UpdateLeftStickWithValue(controls.leftStick.value, updateTick, deltaTime);
++		for (int i = 0; i < controls.buttonMappings.Count; i++)
++		{
++			UpdateWithState(controls.buttonMappings[i], controls.buttons[i].value, updateTick, deltaTime);
++		}
+ 	}
+ }

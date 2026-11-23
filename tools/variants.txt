@@ -1,0 +1,3 @@
+# variante	descripción en castellano	descripción en inglés
+itch-linux	itch.io, versión de Linux (1.10.2)	itch.io, Linux version (1.10.2)
+steam-windows	Steam, versión de Windows (1.10.2)	Steam, Windows version (1.10.2)

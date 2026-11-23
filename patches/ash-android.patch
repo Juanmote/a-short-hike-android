@@ -1,0 +1,685 @@
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/AchievementManager.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/AchievementManager.cs
+index 4d118b8..59deba4 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/AchievementManager.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/AchievementManager.cs
+@@ -45,7 +45,13 @@ public class AchievementManager : ServiceMonoBehaviour
+ 	private void EnsureAchievement(string name)
+ 	{
+ 		Debug.Log("Achievement: " + name);
++		// Port Android: aviso en pantalla la primera vez que se consigue
++		bool isNew = PlayerPrefsAdapter.GetInt("Achieved_" + name) != 1;
+ 		OverrideAchievementFlag(name, value: true);
++		if (isNew)
++		{
++			ASHAchievementToast.Show(name);
++		}
+ 		achievementBackend.EnsureAchievement(name);
+ 	}
+ 
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/BuriedChest.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/BuriedChest.cs
+index 6b4eb3d..c564a8e 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/BuriedChest.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/BuriedChest.cs
+@@ -52,6 +52,7 @@ public class BuriedChest : MonoBehaviour, IBuried
+ 			this.RegisterTimer(duration, () =>
+ 			{
+ 				spawnSound.Play();
++				ASHRumble.Pulse(0.25f, 0.9f);
+ 				chest.transform.position = position + Vector3.up * chestSpawnOffset;
+ 				chest.SetActive(value: true);
+ 				chest.GetComponentInChildren<Chest>().UnearthAnimation();
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/Chest.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/Chest.cs
+index 5819f67..04ea203 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/Chest.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/Chest.cs
+@@ -76,6 +76,7 @@ public class Chest : MonoBehaviour, IInteractableComponent
+ 		if (!opened)
+ 		{
+ 			openSound.Play();
++			ASHRumble.Pulse(0.15f, 0.7f);
+ 			EnableAnimatorTemporarily();
+ 			animator.SetTrigger("OpenAnimation");
+ 			opened = true;
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnInteract.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnInteract.cs
+index e15c7fb..8bce46c 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnInteract.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnInteract.cs
+@@ -42,6 +42,7 @@ public class CollectOnInteract : MonoBehaviour, IInteractableComponent, ICollect
+ 	{
+ 		if (!(this == null))
+ 		{
++			ASHRumble.Pulse(0.12f, 0.7f);
+ 			Player player = Singleton<GameServiceLocator>.instance.levelController.player;
+ 			player.pickUpSound.Play();
+ 			player.StartCoroutine(collectable.PickUpRoutine());
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnTouch.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnTouch.cs
+index 4539d67..1cfd84c 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnTouch.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/CollectOnTouch.cs
+@@ -54,6 +54,7 @@ public class CollectOnTouch : MonoBehaviour, ICollectable
+ 
+ 	public void Collect()
+ 	{
++		ASHRumble.Pulse(0.15f, 0.8f);
+ 		if (pickUpParticles != null)
+ 		{
+ 			pickUpParticles.gameObject.transform.parent = null;
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/Credits.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/Credits.cs
+index 702e237..44f5a9d 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/Credits.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/Credits.cs
+@@ -9,6 +9,54 @@ public class Credits : MonoBehaviour
+ 	private void Start()
+ 	{
+ 		timeline.stopped += OnStopped;
++		AddPortCredit();
++	}
++
++	// Port Android: debajo de "adam robinson-yu" aparece " - Ported by Juanmote - ".
++	// Es una copia del mismo texto colgada de él, así que sale y se va a la vez.
++	private void AddPortCredit()
++	{
++		try
++		{
++			foreach (TMPro.TMP_Text t in Object.FindObjectsOfType<TMPro.TMP_Text>(true))
++			{
++				if (t == null || t.text == null || t.text.Trim() != "adam robinson-yu")
++				{
++					continue;
++				}
++				GameObject copy = Object.Instantiate(t.gameObject, t.transform);
++				foreach (Transform child in copy.transform)
++				{
++					Object.Destroy(child.gameObject);
++				}
++				foreach (MonoBehaviour mb in copy.GetComponents<MonoBehaviour>())
++				{
++					if (!(mb is TMPro.TMP_Text))
++					{
++						Object.Destroy(mb);
++					}
++				}
++				copy.name = "PortedBy";
++				TMPro.TMP_Text txt = copy.GetComponent<TMPro.TMP_Text>();
++				txt.text = "- ported by juanmote -";
++				txt.fontSize = t.fontSize;
++				RectTransform rt = copy.transform as RectTransform;
++				rt.localScale = Vector3.one;
++				rt.localRotation = Quaternion.identity;
++				rt.anchorMin = new Vector2(0.5f, 0f);
++				rt.anchorMax = new Vector2(0.5f, 0f);
++				rt.pivot = new Vector2(0.5f, 1f);
++				rt.anchoredPosition = new Vector2(0f, -2f);
++				rt.sizeDelta = new Vector2(Mathf.Max(200f, (t.transform as RectTransform).rect.width * 2f), t.fontSize * 1.5f);
++				Debug.Log("[ASH] Créditos: añadido Ported by Juanmote");
++				return;
++			}
++			Debug.LogWarning("[ASH] Créditos: no se encontró el texto del autor");
++		}
++		catch (System.Exception e)
++		{
++			Debug.LogWarning("[ASH] Créditos: " + e.Message);
++		}
+ 	}
+ 
+ 	private void OnStopped(PlayableDirector obj)
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/CreditsBox.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/CreditsBox.cs
+index b8c1a0e..ac4def3 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/CreditsBox.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/CreditsBox.cs
+@@ -16,6 +16,14 @@ public class CreditsBox : MonoBehaviour
+ 	private void Start()
+ 	{
+ 		input = GetComponent<FocusableUserInput>();
++		// Port Android: página final con el autor del port
++		if (creditText != null && creditText.Length > 0 && !creditText[creditText.Length - 1].Contains("juanmote"))
++		{
++			string[] list = new string[creditText.Length + 1];
++			creditText.CopyTo(list, 0);
++			list[creditText.Length] = ASHText.T("port para android", "android port") + "\n<color=#C11>- ported by juanmote -</color>";
++			creditText = list;
++		}
+ 		SetAndIncrementText();
+ 	}
+ 
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/FishingActions.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/FishingActions.cs
+index 49e4048..22405a5 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/FishingActions.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/FishingActions.cs
+@@ -531,6 +531,7 @@ public class FishingActions : MonoBehaviour, IHoldableAction
+ 			bobber.AddForce(Vector3.down * nibbleForce, ForceMode.Impulse);
+ 			bobberFloater.SpawnWaterRipple();
+ 			nibbleSounds.PickRandom().Play().pitch += (Random.value - 0.5f) * 0.5f;
++			ASHRumble.Pulse(0.07f, 0.5f);
+ 		}
+ 	}
+ 
+@@ -542,6 +543,7 @@ public class FishingActions : MonoBehaviour, IHoldableAction
+ 			return;
+ 		}
+ 		isBitten = true;
++		ASHRumble.Pulse(0.3f, 1f);
+ 		bobber.isKinematic = true;
+ 		bobber.position += Vector3.down * 1f;
+ 		biteSound.Play();
+@@ -588,6 +590,7 @@ public class FishingActions : MonoBehaviour, IHoldableAction
+ 			}
+ 		}
+ 		catchPoints += catchPointsPerStruggle;
++		ASHRumble.Pulse(0.07f, 0.6f);
+ 		struggleSoundSource.pitch += 0.5f;
+ 		CloseEyes(0.4f);
+ 	}
+@@ -625,6 +628,7 @@ public class FishingActions : MonoBehaviour, IHoldableAction
+ 
+ 	private void LoseFish()
+ 	{
++		ASHRumble.Pulse(0.12f, 0.4f);
+ 		bobberFloater.SpawnWaterRipple();
+ 		biteParticlesPrefab.CloneAt(bobber.transform.position);
+ 		PullLine();
+@@ -632,6 +636,7 @@ public class FishingActions : MonoBehaviour, IHoldableAction
+ 
+ 	private void CatchFish()
+ 	{
++		ASHRumble.Pulse(0.35f, 1f);
+ 		bobberFloater.SpawnWaterRipple();
+ 		biteParticlesPrefab.CloneAt(bobber.transform.position);
+ 		float num = fishingEnvironment.rareLikelihood * fishEncounter.rareLikelihood * (lineBaited ? 2f : 1f) * rodRareChanceMultiplier;
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/GameSettings.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/GameSettings.cs
+index 19d074e..1cef6a2 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/GameSettings.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/GameSettings.cs
+@@ -193,7 +193,15 @@ public static class GameSettings
+ 		{
+ 			_targetFPS = value;
+ 			PlayerPrefsAdapter.SetInt("TARGET_FPS_", value);
+-			Application.targetFrameRate = value;
++			if (Application.platform == RuntimePlatform.Android)
++			{
++				// Port Android: 30 / 60 / 120 FPS (y la pantalla a 120 Hz si hace falta).
++				ASHDisplay.Apply(value);
++			}
++			else
++			{
++				Application.targetFrameRate = value;
++			}
+ 		}
+ 	}
+ 
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/GameSetup.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/GameSetup.cs
+index 7d57a95..504a818 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/GameSetup.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/GameSetup.cs
+@@ -1,6 +1,5 @@
+ using InControl;
+ using UnityEngine;
+-using UnityEngine.AddressableAssets;
+ using UnityEngine.Serialization;
+ 
+ public class GameSetup : MonoBehaviour
+@@ -26,7 +25,7 @@ public class GameSetup : MonoBehaviour
+ 			SetupInputManager();
+ 			IWaitable waitable = GameSettings.LoadSettingsPrefs();
+ 			ExtendedQualitySettings.LoadSettingsPrefs();
+-			Addressables.InitializeAsync();
++			// Port Android: sin Addressables (assets sacados a Resources/aa).
+ 			warmUpShaders.WarmUp();
+ 			WaitFor.WithCoroutine(this, waitable, () =>
+ 			{
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/I18n.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/I18n.cs
+index 2707670..99964c0 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/I18n.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/I18n.cs
+@@ -8,8 +8,6 @@ using CsvHelper;
+ using CsvHelper.Configuration;
+ using TMPro;
+ using UnityEngine;
+-using UnityEngine.AddressableAssets;
+-using UnityEngine.ResourceManagement.AsyncOperations;
+ 
+ public static class I18n
+ {
+@@ -310,21 +308,33 @@ public static class I18n
+ 		FlagWaitable waitable = new FlagWaitable();
+ 		if (flag)
+ 		{
+-			AsyncOperationHandle<IList<UnityEngine.Object>> async = Addressables.LoadAssetsAsync<UnityEngine.Object>(key, null);
+-			IWaitable[] waitables = MinimumTimeWaitable(forceWaitTime, new AsyncOperationHandleWaitable(async));
++			// Port Android: en vez de Addressables, se carga el TTF de Resources/aa y se crea
++			// el TMP_FontAsset dinámico en tiempo de ejecución.
++			IWaitable[] waitables = MinimumTimeWaitable(forceWaitTime, FlagWaitable.FinishedWaitable());
+ 			WaitFor.WithCoroutine(Singleton<ServiceLocator>.instance, () =>
+ 			{
+-				if (async.Status == AsyncOperationStatus.Succeeded)
++				Font font = null;
++				TMP_FontAsset fontTMP = null;
++				if (AndroidAssetMap.FontByKey.TryGetValue(key, out var fontPath))
+ 				{
+-					customFontUnity = async.Result.FirstOrDefault((UnityEngine.Object e) => e is Font) as Font;
+-					customFontTMP = async.Result.FirstOrDefault((UnityEngine.Object e) => e is TMP_FontAsset) as TMP_FontAsset;
+-					customFontSize = _customFontSize;
+-					customFontSpacing = _customFontSpacing;
+-					customMargins = _customMargins;
+-					customFont = true;
+-					onLanguageChanged?.Invoke();
+-					waitable.Finish();
++					font = Resources.Load<Font>(fontPath);
++					if (font != null)
++					{
++						fontTMP = AndroidFonts.GetTMP(key, font);
++					}
++				}
++				if (font == null || fontTMP == null)
++				{
++					Debug.LogWarning("[ASH] No se pudo cargar la fuente: " + key);
+ 				}
++				customFontUnity = font;
++				customFontTMP = fontTMP;
++				customFontSize = _customFontSize;
++				customFontSpacing = _customFontSpacing;
++				customMargins = _customMargins;
++				customFont = font != null && fontTMP != null;
++				onLanguageChanged?.Invoke();
++				waitable.Finish();
+ 			}, waitables);
+ 		}
+ 		else
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/LoadingScene.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/LoadingScene.cs
+index 6c001d4..d18d573 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/LoadingScene.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/LoadingScene.cs
+@@ -22,9 +22,14 @@ public class LoadingScene : MonoBehaviour
+ 
+ 	private int impatientPresses;
+ 
++	private float nextDiag;
++
++	private bool activationLogged;
++
+ 	private void Start()
+ 	{
+-		asyncScene = SceneManager.LoadSceneAsync(1);
++		// Port Android: por nombre (en la APK genérica hay una escena de arranque delante)
++		asyncScene = SceneManager.LoadSceneAsync("TitleScene");
+ 		asyncScene.allowSceneActivation = false;
+ 		TitleScreen.fadeInAudio = true;
+ 		string text = preloadDialogue.text;
+@@ -40,9 +45,23 @@ public class LoadingScene : MonoBehaviour
+ 
+ 	private void Update()
+ 	{
++		if (Time.realtimeSinceStartup >= nextDiag)
++		{
++			nextDiag = Time.realtimeSinceStartup + 3f;
++			Debug.Log("[ASH] Carga: escena=" + asyncScene.progress.ToString("0.00") + " dialogo=" + dialogueLoadTask.Status + " logos=" + logos.isFinished);
++			if (dialogueLoadTask.IsFaulted)
++			{
++				Debug.LogError("[ASH] Error precargando dialogo: " + dialogueLoadTask.Exception);
++			}
++		}
+ 		if (asyncScene.progress >= 0.9f && dialogueLoadTask.IsCompleted && CrossPlatform.isCrossPlatformSplashScreenInitFinished && (logos.isFinished || skipLogos))
+ 		{
+ 			asyncScene.allowSceneActivation = true;
++			if (!activationLogged)
++			{
++				activationLogged = true;
++				Debug.Log("[ASH] Activando TitleScene");
++			}
+ 		}
+ 		int num = CrossPlatform.IsSkipLogoPressed();
+ 		impatientPresses += num;
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/MusicLayer.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/MusicLayer.cs
+index 1f1aa90..991f5a6 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/MusicLayer.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/MusicLayer.cs
+@@ -1,6 +1,5 @@
+ using UnityEngine;
+ using UnityEngine.AddressableAssets;
+-using UnityEngine.ResourceManagement.AsyncOperations;
+ 
+ [CreateAssetMenu(menuName = "Music/Music Layer")]
+ public class MusicLayer : ScriptableObject
+@@ -21,7 +20,9 @@ public class MusicLayer : ScriptableObject
+ 
+ 	public StartTime startTime = StartTime.StartImmediately;
+ 
+-	private AsyncOperationHandle<AudioClip> loadingHandle;
++	// Port Android: la música ya no viene de Addressables sino de Resources/aa (ver AndroidAssetMap).
++	[System.NonSerialized]
++	private ResourceRequest loadingRequest;
+ 
+ 	public AudioClip loadedClip { get; private set; }
+ 
+@@ -31,13 +32,24 @@ public class MusicLayer : ScriptableObject
+ 
+ 	public void StartLoadingClip()
+ 	{
+-		if (!loadingHandle.IsValid())
++		if (loadingRequest != null || loadedClip != null)
+ 		{
+-			loadingHandle = clipReference.LoadAssetAsync<AudioClip>();
+-			loadingHandle.Completed += (AsyncOperationHandle<AudioClip> operation) =>
+-			{
+-				loadedClip = operation.Result;
+-			};
++			return;
++		}
++		string guid = (clipReference != null) ? clipReference.AssetGUID : null;
++		if (string.IsNullOrEmpty(guid) || !AndroidAssetMap.ByGuid.TryGetValue(guid, out var path))
++		{
++			Debug.LogWarning("[ASH] MusicLayer sin clip en Resources: " + name + " (" + guid + ")");
++			return;
+ 		}
++		loadingRequest = Resources.LoadAsync<AudioClip>(path);
++		loadingRequest.completed += (AsyncOperation operation) =>
++		{
++			loadedClip = loadingRequest.asset as AudioClip;
++			if (loadedClip == null)
++			{
++				Debug.LogWarning("[ASH] No se pudo cargar la música: " + path);
++			}
++		};
+ 	}
+ }
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs
+index 5b2a275..68e5783 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/OptionsMenu.cs
+@@ -299,8 +299,43 @@ public class OptionsMenu : MonoBehaviour
+ 		return HighlightText(I18n.STRINGS.jitterFix + ": " + GameSettings.useJitterFix.ToString().ToLower());
+ 	}
+ 
++	private string GetFilterText()
++	{
++		return HighlightText(ASHText.T("filtro", "filter") + ": " + ASHFilters.FilterName);
++	}
++
++	private string GetColorsText()
++	{
++		return HighlightText(ASHText.T("colores", "colors") + ": " + ASHFilters.ColorsName);
++	}
++
++	private string GetTouchText()
++	{
++		return HighlightText(ASHText.T("controles táctiles", "touch controls") + ": " + ASHTouch.ModeName);
++	}
++
++	private string GetTouchSizeText()
++	{
++		return HighlightText(ASHText.T("tamaño táctil", "touch size") + ": " + ASHTouch.SizeName);
++	}
++
++	private string GetTouchOpacityText()
++	{
++		return HighlightText(ASHText.T("opacidad táctil", "touch opacity") + ": " + ASHTouch.OpacityName);
++	}
++
++	private string GetVibrationText()
++	{
++		string problem = ASHRumble.Enabled ? ASHRumble.Problem : "";
++		return HighlightText(ASHText.T("vibración", "vibration") + ": " + (ASHRumble.Enabled ? I18n.STRINGS.enabled : I18n.STRINGS.disabled) + ((problem.Length > 0) ? (" (" + problem + ")") : ""));
++	}
++
+ 	private string GetTargetFPSText()
+ 	{
++		if (Application.isMobilePlatform)
++		{
++			return HighlightText(I18n.STRINGS.targetFPS + ": " + ASHDisplay.Normalize(GameSettings.targetFPS));
++		}
+ 		return HighlightText(I18n.STRINGS.targetFPS + ": " + ((GameSettings.targetFPS == -1) ? I18n.STRINGS.unlimited : GameSettings.targetFPS.ToString()));
+ 	}
+ 
+@@ -362,13 +397,39 @@ public class OptionsMenu : MonoBehaviour
+ 				UI.SetGenericText(item.gameObject, GetColorCorrectionText());
+ 				UpdateCustomImageQualityMenus(menu);
+ 			}));
++			if (Application.isMobilePlatform)
++			{
++				// Port Android: 30 / 60 / 120 FPS
++				list.Add(new MenuItem(GetTargetFPSText(), (BasicMenuItem item) =>
++				{
++					GameSettings.targetFPS = ASHDisplay.Next(GameSettings.targetFPS);
++					UI.SetGenericText(item.gameObject, GetTargetFPSText());
++					PositionMenu(menu.transform);
++				}));
++				// Port Android: filtros de imagen y colores
++				list.Add(new MenuItem(GetFilterText(), (BasicMenuItem item) =>
++				{
++					ASHFilters.Filter++;
++					UI.SetGenericText(item.gameObject, GetFilterText());
++					PositionMenu(menu.transform);
++				}));
++				list.Add(new MenuItem(GetColorsText(), (BasicMenuItem item) =>
++				{
++					ASHFilters.Colors++;
++					UI.SetGenericText(item.gameObject, GetColorsText());
++					PositionMenu(menu.transform);
++				}));
++			}
++			else
++			{
+ 			list.Add(new MenuItem(GetVSyncText(), (BasicMenuItem item) =>
+ 			{
+ 				ExtendedQualitySettings.vSync = (ExtendedQualitySettings.vSync + 1) % 3;
+ 				UI.SetGenericText(item.gameObject, GetVSyncText());
+ 				RefreshGraphicsMenu(menu);
+ 			}));
+-			if (ExtendedQualitySettings.vSync == 0)
++			}
++			if (ExtendedQualitySettings.vSync == 0 && !Application.isMobilePlatform)
+ 			{
+ 				list.Add(new MenuItem(GetTargetFPSText(), (BasicMenuItem item) =>
+ 				{
+@@ -760,11 +821,40 @@ public class OptionsMenu : MonoBehaviour
+ 
+ 	private void ShowControlsMenu()
+ 	{
++		LinearMenu menu = null;
+ 		List<MenuItem> list = new List<MenuItem>();
+ 		list.Add(new MenuItem(I18n.STRINGS.gamepad, () =>
+ 		{
+ 			ui.AddUI(gamepadControlsPrefab.Clone());
+ 		}));
++		if (Application.isMobilePlatform)
++		{
++			// Port Android: controles táctiles y vibración
++			list.Add(new MenuItem(GetTouchText(), (BasicMenuItem item) =>
++			{
++				ASHTouch.Mode++;
++				UI.SetGenericText(item.gameObject, GetTouchText());
++				PositionMenu(menu.transform);
++			}));
++			list.Add(new MenuItem(GetTouchSizeText(), (BasicMenuItem item) =>
++			{
++				ASHTouch.Size++;
++				UI.SetGenericText(item.gameObject, GetTouchSizeText());
++				PositionMenu(menu.transform);
++			}));
++			list.Add(new MenuItem(GetTouchOpacityText(), (BasicMenuItem item) =>
++			{
++				ASHTouch.Opacity++;
++				UI.SetGenericText(item.gameObject, GetTouchOpacityText());
++				PositionMenu(menu.transform);
++			}));
++			list.Add(new MenuItem(GetVibrationText(), (BasicMenuItem item) =>
++			{
++				ASHRumble.Enabled = !ASHRumble.Enabled;
++				UI.SetGenericText(item.gameObject, GetVibrationText());
++				PositionMenu(menu.transform);
++			}));
++		}
+ 		if (!GameSettings.restrictKeyboardSettings)
+ 		{
+ 			list.Add(new MenuItem(I18n.STRINGS.keyboard, () =>
+@@ -799,7 +889,7 @@ public class OptionsMenu : MonoBehaviour
+ 				controllerRemapperPrefab.Clone();
+ 			}));
+ 		}
+-		BuildSimpleMenu(list);
++		menu = BuildSimpleMenu(list);
+ 	}
+ 
+ 	private void ShowCheatsMenu()
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/PixelFilterAdjuster.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/PixelFilterAdjuster.cs
+index 2553cbe..e75c03e 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/PixelFilterAdjuster.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/PixelFilterAdjuster.cs
+@@ -121,7 +121,8 @@ public class PixelFilterAdjuster : ServiceMonoBehaviour
+ 
+ 	public void SetPixelWidth(int width)
+ 	{
+-		SetPixelSize(width, Mathf.RoundToInt((float)width * 9f / 16f));
++		// Port Android: misma proporción que la imagen base (más alta en pantallas estrechas).
++		SetPixelSize(width, Mathf.RoundToInt((float)width * ASHAspect.HeightPerWidth));
+ 	}
+ 
+ 	public void SetPixelSize(int width, int height)
+@@ -167,7 +168,11 @@ public class PixelFilterAdjuster : ServiceMonoBehaviour
+ 			}
+ 		}
+ 		float x = (float)width / (float)height;
+-		renderQuad.transform.localScale = renderQuad.transform.localScale.SetX(x);
++		renderQuad.transform.localScale = renderQuad.transform.localScale.SetX(x * renderQuad.transform.localScale.y);
++		if ((bool)uiRenderQuad)
++		{
++			uiRenderQuad.transform.localScale = uiRenderQuad.transform.localScale.SetX(x * uiRenderQuad.transform.localScale.y);
++		}
+ 	}
+ 
+ 	private static void ConfigureWidth(int width)
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs
+index 3fecd0b..e5ebe82 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/PlayerEffects.cs
+@@ -104,6 +104,7 @@ public class PlayerEffects : MonoBehaviour
+ 
+ 	public void Jump()
+ 	{
++		ASHRumble.Pulse(0.06f, 0.4f);
+ 		PlaySound(jumpSound);
+ 	}
+ 
+@@ -111,6 +112,7 @@ public class PlayerEffects : MonoBehaviour
+ 	{
+ 		animator.FlapWings();
+ 		midairJumpPuff.Play();
++		ASHRumble.Pulse(0.07f, 0.5f);
+ 		PlaySound(flapSound, pitch);
+ 	}
+ 
+@@ -119,6 +121,7 @@ public class PlayerEffects : MonoBehaviour
+ 		float waterY = player.waterRegion.GetWaterY(splashParticles.transform.position);
+ 		splashParticles.transform.position = splashParticles.transform.position.SetY(waterY);
+ 		splashParticles.Play();
++		ASHRumble.Pulse(0.12f, 0.6f);
+ 		PlaySound(splashSound);
+ 		SpawnWaterRingDecal();
+ 		waterRingTime = 0f;
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs
+index ebc517b..d0a1767 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/QuickUnityTools/Input/GameActionSet.cs
+@@ -148,8 +148,25 @@ namespace QuickUnityTools.Input
+ 			return bindingSourceType;
+ 		}
+ 
++		// Port Android: protegido, en Android lanzaba NullReferenceException cada frame y bloqueaba la entrada.
+ 		public string GetButtonName(PlayerAction action)
+ 		{
++			try
++			{
++				return GetButtonNameUnsafe(action);
++			}
++			catch (System.Exception)
++			{
++				return "?";
++			}
++		}
++
++		private string GetButtonNameUnsafe(PlayerAction action)
++		{
++			if (action == null)
++			{
++				return "?";
++			}
+ 			BindingSourceType lastInputType = GetLastInputType();
+ 			if (!lastInputType.IsMouseOrKeyboard())
+ 			{
+@@ -176,12 +193,12 @@ namespace QuickUnityTools.Input
+ 			{
+ 				return DesperatelyTryToFindAButtonName(bindingSource as DeviceBindingSource);
+ 			}
+-			return bindingSource.Name;
++			return (bindingSource != null) ? bindingSource.Name : "?";
+ 		}
+ 
+ 		private string DesperatelyTryToFindAButtonName(DeviceBindingSource bindingSource)
+ 		{
+-			IEnumerable<InputDevice> source = InputManager.Devices.Where((InputDevice d) => !d.Name.Contains("Unknown"));
++			IEnumerable<InputDevice> source = InputManager.Devices.Where((InputDevice d) => d != null && d.Name != null && !d.Name.Contains("Unknown"));
+ 			if (!source.Any())
+ 			{
+ 				return "?";
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/ShovelActions.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/ShovelActions.cs
+index 095196b..98f6917 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/ShovelActions.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/ShovelActions.cs
+@@ -41,6 +41,7 @@ public class ShovelActions : MonoBehaviour, IHoldableAction
+ 				shovelHolePrefab.CloneAt(hitInfo.point + Vector3.up * 0.1f);
+ 				DetectBuriedItems(hitInfo.point);
+ 				audioSource.clip = digSound;
++				ASHRumble.Pulse(0.08f, 0.6f);
+ 				audioSource.Play();
+ 			}
+ 			else
+@@ -49,6 +50,7 @@ public class ShovelActions : MonoBehaviour, IHoldableAction
+ 				groundClashParticles.transform.forward = Vector3.up;
+ 				groundClashParticles.Play();
+ 				audioSource.clip = clashSound;
++				ASHRumble.Pulse(0.12f, 0.9f);
+ 				audioSource.Play();
+ 				hitInfo.collider.GetComponent<IShovelWhackable>()?.WhackWithShovel();
+ 			}
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenButton.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenButton.cs
+index 913e3f9..b83537e 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenButton.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenButton.cs
+@@ -22,7 +22,9 @@ public class TouchScreenButton : MonoBehaviour
+ 
+ 	private void Update()
+ 	{
+-		value = TouchScreenControls.GetScreenPointInsideRect(base.transform as RectTransform, canvas).HasValue;
+-		image.color = image.color.SetA(value ? 1f : originalAlpha);
++		// Port Android: controles táctiles desactivados en Opciones › Controles
++		value = !ASHTouch.InputBlocked && TouchScreenControls.GetScreenPointInsideRect(base.transform as RectTransform, canvas).HasValue;
++		// Port Android: transparencia en reposo elegida en Opciones › Controles; al pulsar, 100%.
++		image.color = image.color.SetA(value ? 1f : (Application.isMobilePlatform ? ASHTouch.IdleAlpha : originalAlpha));
+ 	}
+ }
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenStick.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenStick.cs
+index 3a663c9..dd76da0 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenStick.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/TouchScreenStick.cs
+@@ -23,7 +23,8 @@ public class TouchScreenStick : MonoBehaviour
+ 
+ 	private void Update()
+ 	{
+-		Vector2? screenPointInsideRect = TouchScreenControls.GetScreenPointInsideRect(dragArea, canvas);
++		// Port Android: controles táctiles desactivados en Opciones › Controles
++		Vector2? screenPointInsideRect = ASHTouch.InputBlocked ? (Vector2?)null : TouchScreenControls.GetScreenPointInsideRect(dragArea, canvas);
+ 		if (screenPointInsideRect.HasValue && !prevScreenPos.HasValue)
+ 		{
+ 			base.transform.localPosition = screenPointInsideRect.Value;
+diff --git a/UnityProject/Assets/Scripts/Assembly-CSharp/Volleyball.cs b/UnityProject/Assets/Scripts/Assembly-CSharp/Volleyball.cs
+index 33fe57a..700af84 100644
+--- a/UnityProject/Assets/Scripts/Assembly-CSharp/Volleyball.cs
++++ b/UnityProject/Assets/Scripts/Assembly-CSharp/Volleyball.cs
+@@ -56,6 +56,7 @@ public class Volleyball : MonoBehaviour
+ 		}
+ 		else if (controller != null)
+ 		{
++			ASHRumble.Pulse(0.06f, 0.5f);
+ 			controller.OnBallWhackedByPlayer();
+ 		}
+ 	}

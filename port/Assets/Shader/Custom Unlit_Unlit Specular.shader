@@ -1,0 +1,57 @@
+// Reconstruido para Android (GLES3) a partir del GLSL del juego original.
+Shader "Custom Unlit/Unlit Specular" {
+	Properties {
+		_Color ("Color", Color) = (1,1,1,1)
+		_SpecColor ("Specular Color", Color) = (1,1,1,1)
+		_MainTex ("Albedo (RGB)", 2D) = "white" {}
+		_AttenuationThreshold ("Attenuation Threshold", Range(-1, 1)) = 0
+		_ShadowBitDepth ("Shadow Bit Depth", Range(0, 8)) = 1
+		_Cutoff ("Alpha Cutoff", Range(0, 1)) = 0.5
+		_MaxDarkness ("Custom Darkness", Range(0, 1)) = 0.2
+		_SpecPower ("Specular Power", Range(0, 1000)) = 48
+		_SpecThresh ("Specular Threshold", Range(0, 1)) = 0.5
+	}
+	SubShader {
+		Tags { "RenderType"="Opaque" }
+		LOD 200
+
+		CGPROGRAM
+		#pragma surface surf ASHToonSpec fullforwardshadows alphatest:_Cutoff exclude_path:deferred exclude_path:prepass nolightmap nodynlightmap nodirlightmap nometa
+		#pragma target 3.0
+		#include "ASHToonLighting.cginc"
+		
+		sampler2D _MainTex;
+		fixed4 _Color;
+		// _SpecColor ya lo declara Unity (UnityLightingCommon.cginc).
+		float _SpecPower;
+		float _SpecThresh;
+
+		// Luz toon + brillo especular "duro" (todo o nada segun _SpecThresh), tal como en el original.
+		inline half4 LightingASHToonSpec (SurfaceOutput s, half3 lightDir, half3 viewDir, half atten)
+		{
+		    float3 n = normalize(s.Normal);
+		    float l = ASHToonFactor(dot(n, lightDir), atten);
+
+		    float3 h = normalize(normalize(viewDir) + lightDir);
+		    float spec = pow(max(dot(n, h), 0.0), _SpecPower);
+		    spec = (spec >= _SpecThresh) ? 1.0 : 0.0;
+
+		    half4 c;
+		    c.rgb = s.Albedo * _LightColor0.rgb * l + spec * _SpecColor.rgb * _SpecColor.a;
+		    c.a = s.Alpha;
+		    return c;
+		}
+
+		struct Input {
+		    float2 uv_MainTex;
+		};
+
+		void surf (Input IN, inout SurfaceOutput o) {
+		    fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _Color;
+		    o.Albedo = c.rgb;
+		    o.Alpha = c.a;
+		}
+		ENDCG
+	}
+	Fallback "Diffuse"
+}

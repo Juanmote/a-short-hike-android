@@ -126,7 +126,7 @@ public class ASHSaves : MonoBehaviour
 			{
 				BinaryFormatter bf = new BinaryFormatter();
 				GlobalData.AddSerializationSurrogates(bf);
-				return bf.Deserialize(fs) is GameData;
+				return bf.Deserialize(fs) is GlobalData.GameData;
 			}
 		}
 		catch (Exception ex)
